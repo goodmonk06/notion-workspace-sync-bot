@@ -1,0 +1,61 @@
+// Prisma schema for Notion Workspace Sync Bot
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 同期ルール定義
+model SyncRule {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  notionDatabaseId  String   // Notion Database ID
+  direction         SyncDirection @default(ONE_WAY)
+  targetType        TargetType    @default(WEBHOOK)
+  targetConfig      Json          // { url: "https://...", headers: {...} }
+  isActive          Boolean       @default(true)
+  lastCursor        String?       // 前回の同期位置（cursor）
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  syncLogs          SyncLog[]
+
+  @@index([isActive])
+}
+
+// 同期ログ
+model SyncLog {
+  id          String   @id @default(cuid())
+  ruleId      String
+  eventType   String   // "page.created", "page.updated", "page.deleted"
+  payload     Json     // Notionから取得したデータ
+  status      LogStatus @default(PENDING)
+  error       Json?    // エラー情報
+  createdAt   DateTime @default(now())
+
+  syncRule    SyncRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId, createdAt])
+  @@index([status])
+}
+
+enum SyncDirection {
+  ONE_WAY
+  TWO_WAY
+}
+
+enum TargetType {
+  WEBHOOK
+  DATABASE
+  API
+}
+
+enum LogStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}

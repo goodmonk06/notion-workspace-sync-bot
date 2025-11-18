@@ -1,9 +1,15 @@
 import express, { Request, Response } from 'express';
+import cors from 'cors';
 import { validateEnv, env } from './config/env';
 import { getPrismaClient } from './config/db';
+import { errorHandler } from './middleware/errorHandler';
+import syncRulesRoutes from './api/syncRulesRoutes';
+import syncLogsRoutes from './api/syncLogsRoutes';
 
 const app = express();
 
+// ミドルウェア
+app.use(cors());
 app.use(express.json());
 
 // ヘルスチェックエンドポイント
@@ -27,6 +33,10 @@ app.get('/health', async (req: Request, res: Response) => {
   }
 });
 
+// API Routes
+app.use('/api/sync-rules', syncRulesRoutes);
+app.use('/api/sync-logs', syncLogsRoutes);
+
 // Webhook受信エンドポイント（将来的な拡張用）
 app.post('/webhook/notion', async (req: Request, res: Response) => {
   try {
@@ -47,6 +57,9 @@ app.post('/webhook/notion', async (req: Request, res: Response) => {
   }
 });
 
+// エラーハンドリングミドルウェア（最後に配置）
+app.use(errorHandler);
+
 // サーバー起動
 async function startServer() {
   try {
@@ -58,6 +71,14 @@ async function startServer() {
     app.listen(env.port, () => {
       console.log(`✓ Server is running on port ${env.port}`);
       console.log(`  - Health check: http://localhost:${env.port}/health`);
+      console.log(`  - API Docs:`);
+      console.log(`    - GET    /api/sync-rules`);
+      console.log(`    - POST   /api/sync-rules`);
+      console.log(`    - GET    /api/sync-rules/:id`);
+      console.log(`    - PUT    /api/sync-rules/:id`);
+      console.log(`    - DELETE /api/sync-rules/:id`);
+      console.log(`    - POST   /api/sync-rules/:id/execute`);
+      console.log(`    - GET    /api/sync-logs`);
       console.log(`  - Webhook endpoint: http://localhost:${env.port}/webhook/notion`);
     });
   } catch (error: any) {

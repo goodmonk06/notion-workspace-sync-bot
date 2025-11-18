@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: notion-sync-postgres
+    environment:
+      POSTGRES_USER: notionsync
+      POSTGRES_PASSWORD: notionsync
+      POSTGRES_DB: notion_sync_bot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notionsync"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: notion-sync-app
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://notionsync:notionsync@postgres:5432/notion_sync_bot
+      NOTION_API_KEY: ${NOTION_API_KEY}
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && node dist/server.js"
+
+volumes:
+  postgres_data:

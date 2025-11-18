@@ -28,7 +28,7 @@ interface HistogramMetric {
   timestamp: Date;
 }
 
-class MetricsCollector {
+export class MetricsCollector {
   private counters: Map<string, number> = new Map();
   private gauges: Map<string, number> = new Map();
   private histograms: Map<string, number[]> = new Map();

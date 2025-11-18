@@ -10,7 +10,7 @@ export type EventHandler<T extends DomainEvent = DomainEvent> = (event: T) => Pr
  * Simple in-memory event bus for domain events
  * In production, this could be replaced with a message queue (RabbitMQ, SQS, etc.)
  */
-class EventBus {
+export class EventBus {
   private handlers: Map<string, EventHandler[]> = new Map();
 
   /**
@@ -50,9 +50,11 @@ class EventBus {
       handlerCount: handlers.length,
     });
 
-    // Execute all handlers in parallel
+    // Execute all handlers in parallel, wrapping each in a promise to catch sync throws
     const results = await Promise.allSettled(
-      handlers.map((handler) => Promise.resolve(handler(event)))
+      handlers.map((handler) =>
+        Promise.resolve().then(() => handler(event))
+      )
     );
 
     // Log any handler failures

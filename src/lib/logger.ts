@@ -12,7 +12,7 @@ export interface LogContext {
   [key: string]: any;
 }
 
-class Logger {
+export class Logger {
   private context: LogContext = {};
 
   /**

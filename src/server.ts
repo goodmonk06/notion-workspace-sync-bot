@@ -5,6 +5,9 @@ import { getPrismaClient } from './config/db';
 import { errorHandler } from './middleware/errorHandler';
 import syncRulesRoutes from './api/syncRulesRoutes';
 import syncLogsRoutes from './api/syncLogsRoutes';
+import templatesRoutes from './api/templatesRoutes';
+import executionsRoutes from './api/executionsRoutes';
+import metricsRoutes from './api/metricsRoutes';
 
 const app = express();
 
@@ -36,6 +39,9 @@ app.get('/health', async (req: Request, res: Response) => {
 // API Routes
 app.use('/api/sync-rules', syncRulesRoutes);
 app.use('/api/sync-logs', syncLogsRoutes);
+app.use('/api/templates', templatesRoutes);
+app.use('/api/executions', executionsRoutes);
+app.use('/metrics', metricsRoutes);
 
 // Webhook受信エンドポイント（将来的な拡張用）
 app.post('/webhook/notion', async (req: Request, res: Response) => {
@@ -79,6 +85,11 @@ async function startServer() {
       console.log(`    - DELETE /api/sync-rules/:id`);
       console.log(`    - POST   /api/sync-rules/:id/execute`);
       console.log(`    - GET    /api/sync-logs`);
+      console.log(`    - GET    /api/templates`);
+      console.log(`    - POST   /api/templates/:id/instantiate`);
+      console.log(`    - GET    /api/executions`);
+      console.log(`    - GET    /api/executions/stats`);
+      console.log(`  - Metrics: http://localhost:${env.port}/metrics`);
       console.log(`  - Webhook endpoint: http://localhost:${env.port}/webhook/notion`);
     });
   } catch (error: any) {

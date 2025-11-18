@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { IChannel, NotionPageEvent } from '../sync/types';
+import { IChannelAdapter, ChannelAdapterMetadata } from '../adapters/types';
 
 interface WebhookConfig {
   url: string;
@@ -10,7 +11,7 @@ interface WebhookConfig {
 /**
  * Webhook経由で外部システムへイベントを送信するChannel
  */
-export class WebhookChannel implements IChannel {
+export class WebhookChannel implements IChannel, IChannelAdapter {
   private config: WebhookConfig;
 
   constructor(config: WebhookConfig) {
@@ -54,5 +55,34 @@ export class WebhookChannel implements IChannel {
       }
       throw error;
     }
+  }
+
+  async testConnection(): Promise<boolean> {
+    try {
+      // Test with a minimal payload
+      await axios.post(
+        this.config.url,
+        { test: true },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            ...this.config.headers,
+          },
+          timeout: this.config.timeout,
+        }
+      );
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  getMetadata(): ChannelAdapterMetadata {
+    return {
+      name: 'Webhook Channel',
+      type: 'WEBHOOK',
+      version: '1.0.0',
+      description: 'Sends events to external systems via HTTP POST',
+    };
   }
 }

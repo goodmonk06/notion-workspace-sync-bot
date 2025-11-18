@@ -1,4 +1,4 @@
-// Prisma schema for Notion Workspace Sync Bot
+// Prisma schema for Notion Workspace Sync Bot - Phase 3 Enhanced
 
 generator client {
   provider = "prisma-client-js"
@@ -9,39 +9,251 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 同期ルール定義
+// ============================================================================
+// CORE ENTITIES
+// ============================================================================
+
+// 同期ルール定義（拡張版）
 model SyncRule {
   id                String   @id @default(cuid())
   name              String   @unique
+  description       String?
   notionDatabaseId  String   // Notion Database ID
   direction         SyncDirection @default(ONE_WAY)
   targetType        TargetType    @default(WEBHOOK)
   targetConfig      Json          // { url: "https://...", headers: {...} }
   isActive          Boolean       @default(true)
   lastCursor        String?       // 前回の同期位置（cursor）
+
+  // Phase 3 追加フィールド
+  tags              String[]      @default([])
+  priority          Int           @default(5)  // 1-10, higher = more important
+  rateLimitPerMin   Int?          // Max sync operations per minute
+  metadata          Json?         // Custom metadata for extensions
+
+  // Template relationship
+  templateId        String?
+  template          SyncRuleTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  // Filter relationship
+  filterId          String?       @unique
+  filter            SyncFilter?   @relation(fields: [filterId], references: [id], onDelete: SetNull)
+
+  // Transformation relationship
+  transformationId  String?       @unique
+  transformation    TransformationRule? @relation(fields: [transformationId], references: [id], onDelete: SetNull)
+
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
+  // Relations
   syncLogs          SyncLog[]
+  executions        SyncRuleExecution[]
 
   @@index([isActive])
+  @@index([templateId])
+  @@index([priority])
 }
 
-// 同期ログ
+// 同期ルールテンプレート
+model SyncRuleTemplate {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  description     String
+  category        String   // "CRM", "Project Management", "Analytics", etc.
+
+  // Template configuration
+  targetType      TargetType
+  configSchema    Json     // JSON Schema for targetConfig validation
+  defaultConfig   Json     // Default targetConfig values
+
+  // Template metadata
+  version         String   @default("1.0.0")
+  author          String?
+  tags            String[] @default([])
+  isOfficial      Boolean  @default(false)
+  usageCount      Int      @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  syncRules       SyncRule[]
+
+  @@index([category])
+  @@index([isOfficial])
+}
+
+// 同期実行追跡（SyncLogとは別の粒度）
+model SyncRuleExecution {
+  id              String   @id @default(cuid())
+  ruleId          String
+
+  // Execution metadata
+  status          ExecutionStatus @default(RUNNING)
+  startedAt       DateTime        @default(now())
+  completedAt     DateTime?
+  durationMs      Int?
+
+  // Execution metrics
+  pagesProcessed  Int             @default(0)
+  pagesSucceeded  Int             @default(0)
+  pagesFailed     Int             @default(0)
+  bytesTransferred Int            @default(0)
+
+  // Cursor tracking
+  startCursor     String?
+  endCursor       String?
+
+  // Error tracking
+  errorMessage    String?
+  errorStack      String?
+
+  // Trigger info
+  triggeredBy     TriggerType     @default(MANUAL)
+  triggeredByUser String?
+
+  syncRule        SyncRule        @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId, startedAt])
+  @@index([status])
+  @@index([triggeredBy])
+}
+
+// 同期ログ（個別イベントレベル）
 model SyncLog {
   id          String   @id @default(cuid())
   ruleId      String
+  executionId String?  // Link to SyncRuleExecution
   eventType   String   // "page.created", "page.updated", "page.deleted"
   payload     Json     // Notionから取得したデータ
   status      LogStatus @default(PENDING)
   error       Json?    // エラー情報
+  retryCount  Int      @default(0)
   createdAt   DateTime @default(now())
 
   syncRule    SyncRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
 
   @@index([ruleId, createdAt])
   @@index([status])
+  @@index([executionId])
 }
+
+// ============================================================================
+// FILTERING & TRANSFORMATION
+// ============================================================================
+
+// 同期フィルター
+model SyncFilter {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  description     String?
+
+  // Filter configuration
+  filterType      FilterType
+  filterConfig    Json     // { property: "Status", operator: "equals", value: "Published" }
+
+  // Multiple filter conditions
+  conditions      Json[]   // Array of condition objects
+  logicOperator   String   @default("AND")  // "AND" or "OR"
+
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  syncRule        SyncRule?
+
+  @@index([isActive])
+}
+
+// データ変換ルール
+model TransformationRule {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  description     String?
+
+  // Transformation configuration
+  transformType   TransformType
+  transformConfig Json     // Depends on type: JSONPath, JMESPath, JavaScript, etc.
+
+  // Mapping rules
+  fieldMappings   Json[]   // [{ source: "notion.title", target: "name" }]
+
+  // Validation
+  outputSchema    Json?    // JSON Schema for output validation
+
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  syncRule        SyncRule?
+
+  @@index([isActive])
+}
+
+// ============================================================================
+// NOTIFICATIONS & ALERTS
+// ============================================================================
+
+// 通知チャンネル
+model NotificationChannel {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  description     String?
+
+  // Channel type and config
+  channelType     NotificationChannelType
+  channelConfig   Json     // { url, apiKey, etc. }
+
+  // Notification settings
+  isActive        Boolean  @default(true)
+  throttleMinutes Int      @default(60)  // Min time between notifications
+
+  // Alert rules
+  alertOn         Json     // { failureCount: 3, errorRate: 0.5, etc. }
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  notifications   Notification[]
+
+  @@index([isActive])
+  @@index([channelType])
+}
+
+// 通知履歴
+model Notification {
+  id              String   @id @default(cuid())
+  channelId       String
+
+  // Notification details
+  notificationType NotificationType
+  severity        SeverityLevel
+  title           String
+  message         String
+  metadata        Json?
+
+  // Delivery status
+  status          NotificationStatus @default(PENDING)
+  sentAt          DateTime?
+  deliveredAt     DateTime?
+  errorMessage    String?
+
+  createdAt       DateTime @default(now())
+
+  channel         NotificationChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, createdAt])
+  @@index([status])
+  @@index([notificationType])
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
 
 enum SyncDirection {
   ONE_WAY
@@ -51,11 +263,72 @@ enum SyncDirection {
 enum TargetType {
   WEBHOOK
   DATABASE
+  QUEUE
+  STORAGE
+  EMAIL
   API
 }
 
 enum LogStatus {
   PENDING
   SUCCESS
+  FAILED
+  RETRYING
+}
+
+enum ExecutionStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum TriggerType {
+  MANUAL
+  SCHEDULED
+  WEBHOOK
+  API
+}
+
+enum FilterType {
+  PROPERTY
+  FORMULA
+  COMPOSITE
+}
+
+enum TransformType {
+  JSONPATH
+  JMESPATH
+  JAVASCRIPT
+  TEMPLATE
+}
+
+enum NotificationChannelType {
+  EMAIL
+  SLACK
+  WEBHOOK
+  SMS
+}
+
+enum NotificationType {
+  SYNC_FAILED
+  SYNC_RECOVERED
+  RATE_LIMIT_EXCEEDED
+  SYSTEM_ERROR
+  MAINTENANCE
+}
+
+enum SeverityLevel {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
   FAILED
 }
